@@ -1,0 +1,24 @@
+{
+  "telegram_token": "8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10",
+  "chat_id": "1809414360",
+  "mexc": {
+    "api_key": "mx0vgldPupiJEgujR5",
+    "secret_key": "e610a1a511014832a3ff152efdd04257"
+  },
+  "bitmart": {
+    "api_key": "6130d4bc0778badd1b009cc7884b0c8e6ed6ca1b",
+    "secret_key": "be764e831caea80e4e0e2f259429af37938893e1efebc7e1c04bc668fdd0cd30"
+  },
+  "moedas": [
+    "BTC", "ETH", "USDT", "BNB", "XRP", "ADA", "SOL", "DOGE", "DOT",
+    "MATIC", "LTC", "SHIB", "AVAX", "LINK", "TRX", "UNI", "CRO", "XLM",
+    "ALGO", "ATOM", "VET", "FIL", "ICP", "AAVE", "EOS", "THETA", "SAND",
+    "MANA", "GRT", "CHZ", "FTM", "ONE", "NEAR", "XMR", "ZEC", "BAT", "ENJ",
+    "WAVES", "KSM", "LUNA", "AR", "CELO", "HBAR", "RUNE", "NEO", "OKB", "HT",
+    "FTT", "IOTA", "QTUM", "DCR", "SC", "ZIL", "KNC", "REN", "BAL", "CRV",
+    "SNX", "SUSHI", "YFI", "1INCH", "COMP", "MKR", "LRC", "OMG", "STX", "RVN",
+    "HNT", "GALA", "MINA", "LSK", "XTZ", "XEM", "KAVA", "ANKR", "OCEAN", "CVC",
+    "KSM", "DGB", "CHR", "STORJ", "BAT", "ICX", "NANO", "ZRX"
+  ],
+  "spread_min": 4
+}
