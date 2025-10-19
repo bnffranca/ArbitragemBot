@@ -5,8 +5,10 @@ import os
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-SPREAD_MIN = 0.04
-MAX_SINAIS = 3
+
+SPREAD_MIN = 0.015
+MAX_SINAIS = 2
+INTERVALO = 120
 
 MOEDAS = [
     "BTC", "ETH", "USDT", "BNB", "XRP", "ADA", "SOL", "DOGE", "DOT",
@@ -35,7 +37,7 @@ def enviar_telegram(exchange_compra, moeda_compra, exchange_venda, moeda_venda, 
         "☢️ OPORTUNIDADE ENCONTRADA\n\n"
         f"🟢 COMPRAR - {exchange_compra} :\n{moeda_compra}/USDT\n"
         f"🔴 VENDER - {exchange_venda} :\n{moeda_venda}/USDT\n\n"
-        f"➡️ SPREAD ESPERADO: {spread:.1f}%"
+        f"➡️ SPREAD ESPERADO: {spread:.2f}%"
     )
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": mensagem}
@@ -69,21 +71,6 @@ def analisar_arbitragem():
             spread = ((preco_bitmart / preco_mexc) - 1) * 100
             oportunidades.append(("MEXC", moeda, "BitMart", moeda, spread))
 
-        for moeda2 in MOEDAS:
-            if moeda2 == moeda:
-                continue
-            if moeda2 not in precos_mexc or moeda2 not in precos_bitmart:
-                continue
-            preco2_mexc = precos_mexc[moeda2]
-            preco2_bitmart = precos_bitmart[moeda2]
-
-            if preco_bitmart * (1 + SPREAD_MIN) < preco2_mexc:
-                spread = ((preco2_mexc / preco_bitmart) - 1) * 100
-                oportunidades.append(("BitMart", moeda, "MEXC", moeda2, spread))
-            if preco_mexc * (1 + SPREAD_MIN) < preco2_bitmart:
-                spread = ((preco2_bitmart / preco_mexc) - 1) * 100
-                oportunidades.append(("MEXC", moeda, "BitMart", moeda2, spread))
-
     oportunidades = [op for op in oportunidades if op[4] >= SPREAD_MIN * 100]
     oportunidades.sort(key=lambda x: x[4], reverse=True)
 
@@ -97,6 +84,6 @@ if __name__ == "__main__":
         except Exception as e:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
             requests.post(url, data={"chat_id": CHAT_ID, "text": f"Erro no bot: {e}"})
-        time.sleep(300)
+        time.sleep(INTERVALO)
 
           
