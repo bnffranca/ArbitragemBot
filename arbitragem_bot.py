@@ -1,89 +1,79 @@
 import ccxt
-import requests
 import time
-import os
+import requests
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+BITMART_API_KEY = "6130d4bc0778badd1b009cc7884b0c8e6ed6ca1b"
+BITMART_SECRET_KEY = "be764e831caea80e4e0e2f259429af37938893e1efebc7e1c04bc668fdd0cd30"
+MEXC_API_KEY = "mx0vgldPupiJEgujR5"
+MEXC_SECRET_KEY = "e610a1a511014832a3ff152efdd04257"
+TELEGRAM_TOKEN = "8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10"
+CHAT_ID = "1809414360"
+SPREAD_MIN = 3.0
 
-SPREAD_MIN = 0.015
-MAX_SINAIS = 2
-INTERVALO = 120
-
-MOEDAS = [
-    "BTC", "ETH", "USDT", "BNB", "XRP", "ADA", "SOL", "DOGE", "DOT",
-    "MATIC", "LTC", "SHIB", "AVAX", "LINK", "TRX", "UNI", "CRO", "XLM",
-    "ALGO", "ATOM", "VET", "FIL", "ICP", "AAVE", "EOS", "THETA", "SAND",
-    "MANA", "GRT", "CHZ", "FTM", "ONE", "NEAR", "XMR", "ZEC", "BAT", "ENJ",
-    "WAVES", "KSM", "LUNA", "AR", "CELO", "HBAR", "RUNE", "NEO", "OKB", "HT",
-    "FTT", "IOTA", "QTUM", "DCR", "SC", "ZIL", "KNC", "REN", "BAL", "CRV",
-    "SNX", "SUSHI", "YFI", "1INCH", "COMP", "MKR", "LRC", "OMG", "STX", "RVN",
-    "HNT", "GALA", "MINA", "LSK", "XTZ", "XEM", "KAVA", "ANKR", "OCEAN", "CVC",
-    "DGB", "CHR", "STORJ", "ICX", "NANO", "ZRX"
+PAIRS = [
+    "BTC/USDT","ETH/USDT","BNB/USDT","XRP/USDT","ADA/USDT",
+    "SOL/USDT","DOGE/USDT","DOT/USDT","MATIC/USDT","LTC/USDT",
+    "SHIB/USDT","AVAX/USDT","LINK/USDT","TRX/USDT","UNI/USDT",
+    "XLM/USDT","ATOM/USDT","FIL/USDT","AAVE/USDT","EOS/USDT",
+    "SAND/USDT","MANA/USDT","GRT/USDT","CHZ/USDT","FTM/USDT",
+    "NEAR/USDT","XMR/USDT","ZEC/USDT","ENJ/USDT","LRC/USDT",
+    "QTUM/USDT","CHR/USDT","STORJ/USDT","ANKR/USDT"
 ]
 
-mexc = ccxt.mexc({
-    "apiKey": os.getenv("MEXC_API_KEY"),
-    "secret": os.getenv("MEXC_SECRET_KEY")
-})
-
 bitmart = ccxt.bitmart({
-    "apiKey": os.getenv("BITMART_API_KEY"),
-    "secret": os.getenv("BITMART_SECRET_KEY")
+    'apiKey': BITMART_API_KEY,
+    'secret': BITMART_SECRET_KEY
 })
 
-def enviar_telegram(exchange_compra, moeda_compra, exchange_venda, moeda_venda, spread):
-    mensagem = (
-        "☢️ OPORTUNIDADE ENCONTRADA\n\n"
-        f"🟢 COMPRAR - {exchange_compra} :\n{moeda_compra}/USDT\n"
-        f"🔴 VENDER - {exchange_venda} :\n{moeda_venda}/USDT\n\n"
-        f"➡️ SPREAD ESPERADO: {spread:.2f}%"
-    )
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {"chat_id": CHAT_ID, "text": mensagem}
-    requests.post(url, data=data)
+mexc = ccxt.mexc({
+    'apiKey': MEXC_API_KEY,
+    'secret': MEXC_SECRET_KEY
+})
 
-def obter_precos(exchange, moedas):
-    precos = {}
-    for moeda in moedas:
+def enviar_mensagem(msg):
+    url = "https://api.telegram.org/bot8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10/sendMessage"
+    data = {"chat_id": "1809414360", "text": msg}
+    try:
+        requests.post(url, data=data, timeout=10)
+    except Exception as e:
+        print(f"Erro enviar_mensagem: {e}")
+
+while True:
+    for par in PAIRS:
         try:
-            ticker = exchange.fetch_ticker(moeda + "/USDT")
-            precos[moeda] = ticker["last"]
-        except:
-            continue
-    return precos
+            bm_order = bitmart.fetch_order_book(par)
+            mx_order = mexc.fetch_order_book(par)
 
-def analisar_arbitragem():
-    precos_mexc = obter_precos(mexc, MOEDAS)
-    precos_bitmart = obter_precos(bitmart, MOEDAS)
-    oportunidades = []
+            bm_ask = bm_order['asks'][0][0] if bm_order['asks'] else None
+            bm_bid = bm_order['bids'][0][0] if bm_order['bids'] else None
+            mx_ask = mx_order['asks'][0][0] if mx_order['asks'] else None
+            mx_bid = mx_order['bids'][0][0] if mx_order['bids'] else None
 
-    for moeda in MOEDAS:
-        if moeda not in precos_mexc or moeda not in precos_bitmart:
-            continue
-        preco_mexc = precos_mexc[moeda]
-        preco_bitmart = precos_bitmart[moeda]
+            if bm_ask and mx_bid:
+                spread = ((mx_bid - bm_ask) / bm_ask) * 100
+                if spread >= SPREAD_MIN:
+                    msg = (
+                        f"🟢 COMPRAR na BITMART\n"
+                        f"Moeda: {par}\n💰 Preço: {bm_ask:.6f}\n\n"
+                        f"➡️ TRANSFERIR para MEXC\n"
+                        f"💰 VENDER em: {mx_bid:.6f}\n\n"
+                        f"📊 SPREAD ESPERADO: +{spread:.2f}%"
+                    )
+                    enviar_mensagem(msg)
 
-        if preco_mexc > preco_bitmart * (1 + SPREAD_MIN):
-            spread = ((preco_mexc / preco_bitmart) - 1) * 100
-            oportunidades.append(("BitMart", moeda, "MEXC", moeda, spread))
-        elif preco_bitmart > preco_mexc * (1 + SPREAD_MIN):
-            spread = ((preco_bitmart / preco_mexc) - 1) * 100
-            oportunidades.append(("MEXC", moeda, "BitMart", moeda, spread))
+            if mx_ask and bm_bid:
+                spread = ((bm_bid - mx_ask) / mx_ask) * 100
+                if spread >= SPREAD_MIN:
+                    msg = (
+                        f"🟢 COMPRAR na MEXC\n"
+                        f"Moeda: {par}\n💰 Preço: {mx_ask:.6f}\n\n"
+                        f"➡️ TRANSFERIR para BITMART\n"
+                        f"💰 VENDER em: {bm_bid:.6f}\n\n"
+                        f"📊 SPREAD ESPERADO: +{spread:.2f}%"
+                    )
+                    enviar_mensagem(msg)
 
-    oportunidades = [op for op in oportunidades if op[4] >= SPREAD_MIN * 100]
-    oportunidades.sort(key=lambda x: x[4], reverse=True)
-
-    for op in oportunidades[:MAX_SINAIS]:
-        enviar_telegram(*op)
-
-if __name__ == "__main__":
-    while True:
-        try:
-            analisar_arbitragem()
         except Exception as e:
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-            requests.post(url, data={"chat_id": CHAT_ID, "text": f"Erro no bot: {e}"})
-        time.sleep(INTERVALO)
+            print(f"Erro ao processar {par}: {e}")
 
-          
+    time.sleep(2)
