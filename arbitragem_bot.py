@@ -10,16 +10,6 @@ TELEGRAM_TOKEN = "8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10"
 CHAT_ID = "1809414360"
 SPREAD_MIN = 3.0
 
-PAIRS = [
-    "BTC/USDT","ETH/USDT","BNB/USDT","XRP/USDT","ADA/USDT",
-    "SOL/USDT","DOGE/USDT","DOT/USDT","MATIC/USDT","LTC/USDT",
-    "SHIB/USDT","AVAX/USDT","LINK/USDT","TRX/USDT","UNI/USDT",
-    "XLM/USDT","ATOM/USDT","FIL/USDT","AAVE/USDT","EOS/USDT",
-    "SAND/USDT","MANA/USDT","GRT/USDT","CHZ/USDT","FTM/USDT",
-    "NEAR/USDT","XMR/USDT","ZEC/USDT","ENJ/USDT","LRC/USDT",
-    "QTUM/USDT","CHR/USDT","STORJ/USDT","ANKR/USDT"
-]
-
 bitmart = ccxt.bitmart({
     'apiKey': BITMART_API_KEY,
     'secret': BITMART_SECRET_KEY
@@ -29,6 +19,10 @@ mexc = ccxt.mexc({
     'apiKey': MEXC_API_KEY,
     'secret': MEXC_SECRET_KEY
 })
+
+bitmart.load_markets()
+mexc.load_markets()
+PAIRS = list(set(bitmart.symbols) & set(mexc.symbols))
 
 def enviar_mensagem(msg):
     url = "https://api.telegram.org/bot8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10/sendMessage"
@@ -77,3 +71,4 @@ while True:
             print(f"Erro ao processar {par}: {e}")
 
     time.sleep(2)
+
