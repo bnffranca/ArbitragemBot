@@ -1,13 +1,10 @@
 import ccxt
 import requests
 import time
-import os
 from datetime import datetime, timedelta
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-CHAT_ID = os.getenv("CHAT_ID", "")
-MEXC_API_KEY = os.getenv("MEXC_API_KEY", "")
-MEXC_SECRET_KEY = os.getenv("MEXC_SECRET_KEY", "")
+TELEGRAM_TOKEN = "8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10"
+CHAT_ID = "1809414360"
 
 SPREAD_MIN = 0.5
 VOLUME_MIN = 800
@@ -15,7 +12,16 @@ DELAY = 0.2
 USE_BALANCE_PCT = 1.0
 TOTAL_FEE = 0.003
 
-mexc = None
+mexc = ccxt.mexc({
+    'apiKey': "mx0vgldd1b0f5b30b8cd99a3b5a2c69b8",
+    'secret': "b7dd86e6f9c741f1b4e5d3bb5aa604af",
+    'enableRateLimit': True,
+    'options': {
+        'defaultType': 'spot',
+        'adjustForTimeDifference': True
+    }
+})
+mexc.load_markets()
 
 start_ts = time.time()
 cycles = 0
@@ -25,8 +31,8 @@ running_cycle = False
 
 def send_telegram(msg):
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        data = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
+        url = "https://api.telegram.org/bot8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10/sendMessage"
+        data = {"chat_id": "1809414360", "text": msg, "parse_mode": "Markdown"}
         requests.post(url, data=data, timeout=10)
     except:
         pass
@@ -94,22 +100,16 @@ def plan_from_cache(prices, ex, usdt_avail, base, quote2):
     min_amt1, min_cost1 = limits(ex, s1)
     min_amt2, min_cost2 = limits(ex, s2)
     min_amt3, min_cost3 = limits(ex, s3)
-    if min_amt1 and qty_base < min_amt1:
-        return None
-    if min_cost1 and usdt_use < min_cost1:
-        return None
+    if min_amt1 and qty_base < min_amt1: return None
+    if min_cost1 and usdt_use < min_cost1: return None
     qty_quote2 = qty_base * b2
-    if min_amt2 and qty_base < min_amt2:
-        return None
-    if min_cost2 and qty_quote2 < min_cost2:
-        return None
+    if min_amt2 and qty_base < min_amt2: return None
+    if min_cost2 and qty_quote2 < min_cost2: return None
     usdt_final_gross = qty_quote2 * b3
-    if min_amt3 and qty_quote2 < min_amt3:
-        return None
-    if min_cost3 and usdt_final_gross < min_cost3:
-        return None
+    if min_amt3 and qty_quote2 < min_amt3: return None
+    if min_cost3 and usdt_final_gross < min_cost3: return None
     gross_factor = (b2 * b3) / a1
-    net_spread_pct = (gross_factor - 1 - TOTAL_FEE) * 100
+    net_spread_pct = (gross_factor - 1 - TOTAL_FEE) * 100.0
     qb = quantize(ex, s1, qty_base)
     qq2 = quantize(ex, s3, qty_quote2)
     return {"spread_net": net_spread_pct, "s1": s1, "s2": s2, "s3": s3,
@@ -147,19 +147,21 @@ def best_opportunity(ex):
             s2_inv = f"{b}/{a}"
             plan = None
             if s2_dir in existing:
-                plan = plan_from_cache(prices, ex, s, a, b)
+                pd = plan_from_cache(prices, ex, s, a, b)
+                if pd:
+                    plan = pd
             if s2_inv in existing:
-                plan_inv = plan_from_cache(prices, ex, s, b, a)
-                if plan is None or (plan_inv and plan_inv["spread_net"] > plan["spread_net"]):
-                    plan = plan_inv
+                pi = plan_from_cache(prices, ex, s, b, a)
+                if (plan is None) or (pi and pi["spread_net"] > plan["spread_net"]):
+                    plan = pi
             if not plan:
                 continue
             if plan["spread_net"] < SPREAD_MIN:
-                if shown < 60:
+                if shown < 40:
                     print(f"🔴 USDT → {plan['base']} → {plan['quote2']} → USDT | Net spread: {plan['spread_net']:.2f}%")
                     shown += 1
                 continue
-            if best is None or plan["spread_net"] > best["spread_net"]:
+            if (best is None) or (plan["spread_net"] > best["spread_net"]):
                 best = plan
     return best
 
@@ -197,13 +199,13 @@ def execute_cycle(ex, plan):
         cycles += 1
         total_profit_usdt += max(0.0, gain)
         msg = (
-            f"📢 *TRIANGULAR ARBITRAGE EXECUTED (MEXC)*\n"
-            f"💱 Cycle: USDT → {base} → {quote2} → USDT\n"
-            f"📊 Net spread: {plan['spread_net']:.2f}%\n"
-            f"💰 USDT used: {plan['usdt_use']:.4f}\n"
-            f"💵 Profit this cycle: {gain:.4f} USDT\n"
-            f"🏦 Current USDT: {usdt_after:.4f}\n"
-            f"🕒 Time: {datetime.now().strftime('%H:%M:%S')}"
+            f"📢 *ARBITRAGEM EXECUTADA (MEXC)*\n"
+            f"💱 Ciclo: USDT → {base} → {quote2} → USDT\n"
+            f"📊 Spread líquido: {plan['spread_net']:.2f}%\n"
+            f"💰 USDT usado: {plan['usdt_use']:.4f}\n"
+            f"💵 Lucro no ciclo: {gain:.4f} USDT\n"
+            f"🏦 USDT atual: {usdt_after:.4f}\n"
+            f"🕒 Horário: {datetime.now().strftime('%H:%M:%S')}"
         )
         print(msg)
         send_telegram(msg)
@@ -212,31 +214,18 @@ def execute_cycle(ex, plan):
     time.sleep(1.5)
     running_cycle = False
 
-def iniciar_arbitragem():
-    global base_balance_start, mexc
-    
-    if mexc is None:
-        mexc = ccxt.mexc({
-            'apiKey': MEXC_API_KEY,
-            'secret': MEXC_SECRET_KEY,
-            'options': {'defaultType': 'spot'}
-        })
-        mexc.load_markets()
-        print("🟢 Internal Arbitrage Bot (MEXC Spot) Started\n")
-    
+def run_bot():
+    global base_balance_start
+    print("🟢 Bot de Arbitragem Interna (MEXC Spot) Iniciado\n")
     if base_balance_start is None:
         base_balance_start = usdt_balance(mexc)
-    
-    cls()
-    bal = usdt_balance(mexc)
-    render_header(bal)
-    print("Scanning for opportunities...")
-    plan = best_opportunity(mexc)
-    if plan:
-        execute_cycle(mexc, plan)
-    else:
-        time.sleep(DELAY)
-
-if __name__ == "__main__":
     while True:
-        iniciar_arbitragem()
+        cls()
+        bal = usdt_balance(mexc)
+        render_header(bal)
+        print("Scanning for opportunities...")
+        plan = best_opportunity(mexc)
+        if plan:
+            execute_cycle(mexc, plan)
+        else:
+            time.sleep(DELAY)
