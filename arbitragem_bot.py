@@ -8,13 +8,9 @@ CHAT_ID = "1809414360"
 
 SPREAD_MIN = 0.35
 VOLUME_MIN = 800
-DELAY = 5
-COOLDOWN = 5
+DELAY = 0.2
 USAR_PCT_SALDO = 1.0
 TAXA_TOTAL = 0.003
-
-MEXC_API_KEY = "mx0vgldd1b0f5b30b8cd99a3b5a2c69b8"
-MEXC_SECRET_KEY = "b7dd86e6f9c741f1b4e5d3bb5aa604af"
 
 mexc = ccxt.mexc({
     'apiKey': "mx0vgldd1b0f5b30b8cd99a3b5a2c69b8",
@@ -27,6 +23,7 @@ start_ts = time.time()
 ciclos = 0
 lucro_total_usdt = 0.0
 saldo_base_inicial = None
+executando_ciclo = False
 
 def enviar_telegram(msg):
     try:
@@ -108,7 +105,6 @@ def avaliar_pernas_liquidas(ex, usdt_disp, base, quote2):
     fator_bruto = (b2 * b3) / a1
     spread_liquido_pct = (fator_bruto - 1 - TAXA_TOTAL) * 100
     qb = arredonda(ex, s1, qtd_base)
-    q2 = arredonda(ex, s2, qtd_base)
     q3 = arredonda(ex, s3, qtd_quote2)
     return {
         "spread_liq": spread_liquido_pct,
@@ -121,34 +117,54 @@ def avaliar_pernas_liquidas(ex, usdt_disp, base, quote2):
     }
 
 def melhor_oportunidade(ex):
+    global executando_ciclo
+    if executando_ciclo:
+        return None
     try:
         ticks = ex.fetch_tickers()
     except:
         return None
     prec = {s: d for s, d in ticks.items() if d.get("bid") and d.get("ask") and d.get("quoteVolume")}
     usdt_pairs = [s for s in prec if s.endswith("/USDT") and prec[s]["quoteVolume"] >= VOLUME_MIN]
-    bases = [s.split("/")[0] for s in usdt_pairs]
-    s = saldo_usdt(ex)
-    if s <= 0:
+    moedas = [s.split("/")[0] for s in usdt_pairs]
+    existe_par = set(prec.keys())
+    s_usdt = saldo_usdt(ex)
+    if s_usdt <= 0:
         return None
     best = None
-    printed = 0
-    for base in bases:
-        for p2 in [x for x in prec if x.startswith(base + "/") and not x.endswith("/USDT")]:
-            q2 = p2.split("/")[1]
-            p3 = f"{q2}/USDT"
-            if p3 not in prec:
+    mostrados = 0
+    for a in moedas:
+        s1_a = f"{a}/USDT"
+        if s1_a not in prec:
+            continue
+        for b in moedas:
+            if b == a:
                 continue
-            plano = avaliar_pernas_liquidas(ex, s, base, q2)
-            if not plano:
+            s3_b = f"{b}/USDT"
+            if s3_b not in prec:
                 continue
-            if plano["spread_liq"] < SPREAD_MIN:
-                if printed < 25:
-                    print(f"🔴 USDT → {base} → {q2} → USDT | Spread líquido: {plano['spread_liq']:.2f}%")
-                    printed += 1
+            s2_dir = f"{a}/{b}"
+            s2_inv = f"{b}/{a}"
+            plano_dir = None
+            plano_inv = None
+            if s2_dir in existe_par:
+                plano_dir = avaliar_pernas_liquidas(ex, s_usdt, a, b)
+            if s2_inv in existe_par:
+                plano_inv = avaliar_pernas_liquidas(ex, s_usdt, b, a)
+            candidato = None
+            if plano_dir and plano_inv:
+                candidato = plano_dir if plano_dir["spread_liq"] >= plano_inv["spread_liq"] else plano_inv
+            else:
+                candidato = plano_dir or plano_inv
+            if not candidato:
                 continue
-            if (best is None) or (plano["spread_liq"] > best["spread_liq"]):
-                best = plano
+            if candidato["spread_liq"] < SPREAD_MIN:
+                if mostrados < 40:
+                    print(f"🔴 USDT → {candidato['base']} → {candidato['quote2']} → USDT | Spread líquido: {candidato['spread_liq']:.2f}%")
+                    mostrados += 1
+                continue
+            if (best is None) or (candidato["spread_liq"] > best["spread_liq"]):
+                best = candidato
     return best
 
 def order_market(ex, symbol, side, amount):
@@ -171,7 +187,9 @@ def unwind_usdt(ex, base, quote2):
         pass
 
 def executar_ciclo(ex, plano):
-    global ciclos, lucro_total_usdt
+    global ciclos, lucro_total_usdt, executando_ciclo
+    executando_ciclo = True
+    t0 = time.time()
     base = plano["base"]
     quote2 = plano["quote2"]
     print(f"🟢 Executando: USDT → {base} → {quote2} → USDT | Spread líquido: {plano['spread_liq']:.2f}%")
@@ -201,6 +219,10 @@ def executar_ciclo(ex, plano):
         enviar_telegram(msg)
     except:
         unwind_usdt(ex, base, quote2)
+    dur = time.time() - t0
+    pausa = 1.0 if dur < 2.0 else 2.0 if dur < 4.0 else 3.0 if dur < 6.0 else 4.0
+    time.sleep(pausa)
+    executando_ciclo = False
 
 def iniciar_arbitragem():
     global saldo_base_inicial
@@ -215,7 +237,6 @@ def iniciar_arbitragem():
         plano = melhor_oportunidade(mexc)
         if plano:
             executar_ciclo(mexc, plano)
-            time.sleep(COOLDOWN)
         else:
             time.sleep(DELAY)
 
