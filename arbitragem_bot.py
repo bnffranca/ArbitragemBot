@@ -15,12 +15,7 @@ DELAY = 0.2
 USE_BALANCE_PCT = 1.0
 TOTAL_FEE = 0.003
 
-mexc = ccxt.mexc({
-    'apiKey': MEXC_API_KEY,
-    'secret': MEXC_SECRET_KEY,
-    'options': {'defaultType': 'spot'}
-})
-mexc.load_markets()
+mexc = None
 
 start_ts = time.time()
 cycles = 0
@@ -217,20 +212,31 @@ def execute_cycle(ex, plan):
     time.sleep(1.5)
     running_cycle = False
 
-def run_bot():
-    global base_balance_start
-    print("🟢 Internal Arbitrage Bot (MEXC Spot) Started\n")
+def iniciar_arbitragem():
+    global base_balance_start, mexc
+    
+    if mexc is None:
+        mexc = ccxt.mexc({
+            'apiKey': MEXC_API_KEY,
+            'secret': MEXC_SECRET_KEY,
+            'options': {'defaultType': 'spot'}
+        })
+        mexc.load_markets()
+        print("🟢 Internal Arbitrage Bot (MEXC Spot) Started\n")
+    
     if base_balance_start is None:
         base_balance_start = usdt_balance(mexc)
-    while True:
-        cls()
-        bal = usdt_balance(mexc)
-        render_header(bal)
-        print("Scanning for opportunities...")
-        plan = best_opportunity(mexc)
-        if plan:
-            execute_cycle(mexc, plan)
-        else:
-            time.sleep(DELAY)
+    
+    cls()
+    bal = usdt_balance(mexc)
+    render_header(bal)
+    print("Scanning for opportunities...")
+    plan = best_opportunity(mexc)
+    if plan:
+        execute_cycle(mexc, plan)
+    else:
+        time.sleep(DELAY)
 
-run_bot()
+if __name__ == "__main__":
+    while True:
+        iniciar_arbitragem()

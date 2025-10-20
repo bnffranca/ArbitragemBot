@@ -6,7 +6,7 @@ print("🟢 Bot de Arbitragem Interna (MEXC) iniciado com sucesso!")
 
 while True:
     try:
-        arbitragem_bot.run_bot()
+        arbitragem_bot.iniciar_arbitragem()
     except Exception as e:
         url = f"https://api.telegram.org/bot{arbitragem_bot.TELEGRAM_TOKEN}/sendMessage"
         data = {
