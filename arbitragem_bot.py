@@ -1,10 +1,13 @@
 import ccxt
 import requests
 import time
+import os
 from datetime import datetime, timedelta
 
-TELEGRAM_TOKEN = "8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10"
-CHAT_ID = "1809414360"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+CHAT_ID = os.getenv("CHAT_ID", "")
+MEXC_API_KEY = os.getenv("MEXC_API_KEY", "")
+MEXC_SECRET_KEY = os.getenv("MEXC_SECRET_KEY", "")
 
 SPREAD_MIN = 0.5
 VOLUME_MIN = 800
@@ -13,8 +16,8 @@ USE_BALANCE_PCT = 1.0
 TOTAL_FEE = 0.003
 
 mexc = ccxt.mexc({
-    'apiKey': "mx0vgldd1b0f5b30b8cd99a3b5a2c69b8",
-    'secret': "b7dd86e6f9c741f1b4e5d3bb5aa604af",
+    'apiKey': MEXC_API_KEY,
+    'secret': MEXC_SECRET_KEY,
     'options': {'defaultType': 'spot'}
 })
 mexc.load_markets()
@@ -27,8 +30,8 @@ running_cycle = False
 
 def send_telegram(msg):
     try:
-        url = "https://api.telegram.org/bot8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10/sendMessage"
-        data = {"chat_id": "1809414360", "text": msg, "parse_mode": "Markdown"}
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        data = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
         requests.post(url, data=data, timeout=10)
     except:
         pass
