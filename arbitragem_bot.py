@@ -1,179 +1,204 @@
+import ccxt
+import time
+import requests
+import math
+
 BITMART_API_KEY = "6130d4bc0778badd1b009cc7884b0c8e6ed6ca1b"
 BITMART_SECRET_KEY = "be764e831caea80e4e0e2f259429af37938893e1efebc7e1c04bc668fdd0cd30"
 MEXC_API_KEY = "mx0vgldPupiJEgujR5"
 MEXC_SECRET_KEY = "e610a1a511014832a3ff152efdd04257"
-TELEGRAM_TOKEN = "8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10"
-CHAT_ID = "1809414360"
 
-VOLUME_MIN_USDT = 300000.0
-SPREAD_MIN_PERCENT = 3.0
-TICKER_TIMESTAMP_MAX_AGE_MS = 60 * 1000
-RECEIVER_CHECK_LIMIT = 200
-LOOP_SLEEP_SECONDS = 2
+SPREAD_MIN = 3.0
+MIN_24H_VOLUME_USD = 50000.0
+SLEEP_SECONDS = 8
 
 bitmart = ccxt.bitmart({
-    'apiKey': BITMART_API_KEY,
-    'secret': BITMART_SECRET_KEY,
-    'enableRateLimit': True,
-    'timeout': 20000,
+    "apiKey": "6130d4bc0778badd1b009cc7884b0c8e6ed6ca1b",
+    "secret": "be764e831caea80e4e0e2f259429af37938893e1efebc7e1c04bc668fdd0cd30",
+    "enableRateLimit": True,
+    "options": {"defaultType": "spot"},
 })
+
 mexc = ccxt.mexc({
-    'apiKey': MEXC_API_KEY,
-    'secret': MEXC_SECRET_KEY,
-    'enableRateLimit': True,
-    'timeout': 20000,
+    "apiKey": "mx0vgldPupiJEgujR5",
+    "secret": "e610a1a511014832a3ff152efdd04257",
+    "enableRateLimit": True,
+    "options": {"defaultType": "spot"},
 })
 
 def enviar_mensagem(msg):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {"chat_id": CHAT_ID, "text": msg}
+    url = "https://api.telegram.org/bot8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10/sendMessage"
+    data = {"chat_id": "1809414360", "text": msg}
     try:
-        requests.post(url, data=data, timeout=10)
-    except Exception as e:
-        print(f"Erro enviar_mensagem: {e}")
+        requests.post(url, data=data, timeout=15)
+    except Exception:
+        pass
 
-def carregar_pares():
-    bitmart.load_markets()
-    mexc.load_markets()
-    bit_pairs = [s for s in bitmart.symbols if s.endswith("/USDT")]
-    mexc_pairs = [s for s in mexc.symbols if s.endswith("/USDT")]
-    payer_candidates = [s for s in mexc_pairs if s in bitmart.symbols]
-    return payer_candidates, bit_pairs
+def safe_ticker(exchange, symbol):
+    try:
+        return exchange.fetch_ticker(symbol)
+    except Exception:
+        return None
 
-def pegar_saldo_usdt_mexc():
+def has_market(exchange, symbol):
+    try:
+        return symbol in exchange.symbols
+    except Exception:
+        return False
+
+def get_24h_quote_volume_usd(ticker):
+    if not ticker:
+        return 0.0
+    qv = ticker.get("quoteVolume")
+    if qv:
+        try:
+            return float(qv)
+        except Exception:
+            pass
+    base_vol = ticker.get("baseVolume") or 0.0
+    last = ticker.get("last") or 0.0
+    try:
+        return float(base_vol) * float(last)
+    except Exception:
+        return 0.0
+
+def format_pct(x):
+    return f"{x:+.2f}%"
+
+def load_markets_safe():
+    try:
+        bitmart.load_markets()
+    except Exception:
+        pass
+    try:
+        mexc.load_markets()
+    except Exception:
+        pass
+
+def find_common_pay_tokens():
+    try:
+        bit_symbols = set(bitmart.symbols)
+        mex_symbols = set(mexc.symbols)
+    except Exception:
+        return []
+    pay_tokens = set()
+    for sym in mex_symbols:
+        if sym.endswith("/USDT"):
+            token = sym.split("/")[0]
+            if any(s.startswith(f"{token}/") for s in bit_symbols) or f"{token}/USDT" in bit_symbols:
+                pay_tokens.add(token)
+    return sorted(pay_tokens)
+
+def estimate_opportunity(pay_token, candidate_dest, usdt_balance):
+    buy_pair_mexc = f"{pay_token}/USDT"
+    dest_pair_bitmart = f"{candidate_dest}/{pay_token}"
+    dest_usdt_pair_bitmart = f"{candidate_dest}/USDT"
+
+    if not (has_market(mexc, buy_pair_mexc) and has_market(bitmart, dest_pair_bitmart) and has_market(bitmart, dest_usdt_pair_bitmart)):
+        return None
+
+    ticker_pay_mexc = safe_ticker(mexc, buy_pair_mexc)
+    ticker_dest_pair = safe_ticker(bitmart, dest_pair_bitmart)
+    ticker_dest_usdt = safe_ticker(bitmart, dest_usdt_pair_bitmart)
+
+    if not (ticker_pay_mexc and ticker_dest_pair and ticker_dest_usdt):
+        return None
+
+    vol_pay_mexc = get_24h_quote_volume_usd(ticker_pay_mexc)
+    vol_dest_bitmart = get_24h_quote_volume_usd(ticker_dest_usdt)
+
+    if vol_pay_mexc < MIN_24H_VOLUME_USD or vol_dest_bitmart < MIN_24H_VOLUME_USD:
+        return None
+
+    price_pay_buy = ticker_pay_mexc.get("last")
+    price_dest_in_pay = ticker_dest_pair.get("last")
+    price_dest_usdt_bid = ticker_dest_usdt.get("last")
+
+    if not price_pay_buy or not price_dest_in_pay or not price_dest_usdt_bid:
+        return None
+
+    try:
+        price_pay_buy = float(price_pay_buy)
+        price_dest_in_pay = float(price_dest_in_pay)
+        price_dest_usdt_bid = float(price_dest_usdt_bid)
+    except Exception:
+        return None
+
+    if price_pay_buy <= 0 or price_dest_in_pay <= 0:
+        return None
+
+    pay_amount = usdt_balance / price_pay_buy
+    dest_amount = pay_amount / price_dest_in_pay
+    final_usdt = dest_amount * price_dest_usdt_bid
+
+    spread_pct = ((final_usdt - usdt_balance) / usdt_balance) * 100.0
+
+    return {
+        "pay_token": pay_token,
+        "dest_token": candidate_dest,
+        "price_pay_buy": price_pay_buy,
+        "price_dest_in_pay": price_dest_in_pay,
+        "price_dest_usdt_bid": price_dest_usdt_bid,
+        "vol_pay_mexc": vol_pay_mexc,
+        "vol_dest_bitmart": vol_dest_bitmart,
+        "final_usdt": final_usdt,
+        "spread_pct": spread_pct,
+    }
+
+def get_usdt_balance_on_mexc():
     try:
         bal = mexc.fetch_balance()
-        usdt = 0.0
-        if 'USDT' in bal.get('free', {}):
-            usdt = float(bal['free']['USDT'] or 0.0)
-        elif 'USDT' in bal.get('total', {}):
-            usdt = float(bal['total']['USDT'] or 0.0)
-        return usdt
-    except Exception as e:
-        print(f"Erro ao obter saldo MEXC: {e}")
-        return 0.0
-
-def ticker_recente_valido(ticker):
-    if not ticker:
-        return False
-    last = ticker.get('last')
-    ts = ticker.get('timestamp')
-    if last is None or ts is None:
-        return False
-    age = abs(int(time.time() * 1000) - int(ts))
-    return age <= TICKER_TIMESTAMP_MAX_AGE_MS
-
-def obter_volume_24h_usdt(ticker):
-    qv = ticker.get('quoteVolume')
-    if qv is None:
-        bv = ticker.get('baseVolume')
-        last = ticker.get('last') or 0.0
-        try:
-            return float(bv or 0.0) * float(last or 0.0)
-        except:
-            return 0.0
-    try:
-        return float(qv or 0.0)
-    except:
-        return 0.0
-
-def format_num(n, ndigits=6):
-    try:
-        return f"{float(n):.{ndigits}f}"
-    except:
-        return str(n)
-
-def analisar_e_enviar():
-    payer_candidates, bit_pairs = carregar_pares()
-    print(f"🎯 Payers comuns (MEXC+BitMart): {len(payer_candidates)}")
-    print(f"📌 BitMart USDT pares disponíveis: {len(bit_pairs)}")
-    bit_ticks = {}
-    try:
-        bit_ticks = bitmart.fetch_tickers([p for p in bit_pairs[:RECEIVER_CHECK_LIMIT]])
+        free = bal.get("free", {}) or {}
+        usdt = free.get("USDT") or free.get("usdt") or 0.0
+        return float(usdt)
     except Exception:
-        for s in bit_pairs[:RECEIVER_CHECK_LIMIT]:
-            try:
-                bit_ticks[s] = bitmart.fetch_ticker(s)
-            except Exception:
-                bit_ticks[s] = None
+        return 0.0
 
+def main_loop():
+    load_markets_safe()
+    pay_tokens = find_common_pay_tokens()
+    if not pay_tokens:
+        print("⚠️ Nenhum token pagador comum encontrado.")
     while True:
         try:
-            mexc_balance_usdt = pegar_saldo_usdt_mexc()
-            for payer in payer_candidates:
-                try:
-                    ticker_payer_mexc = mexc.fetch_ticker(payer)
-                except Exception as e:
-                    print(f"Erro ao buscar ticker MEXC {payer}: {e}")
-                    continue
+            load_markets_safe()
+            usdt_balance = get_usdt_balance_on_mexc()
+            if usdt_balance <= 0:
+                usdt_balance = 100.0
 
-                if not ticker_recente_valido(ticker_payer_mexc):
-                    print(f"⚪ {payer} ignorado → preço MEXC não atualizado")
-                    continue
+            opportunities_found = 0
 
-                volume_payer = obter_volume_24h_usdt(ticker_payer_mexc)
-                if volume_payer < VOLUME_MIN_USDT:
-                    print(f"⚪ {payer} ignorado → volume 24h {volume_payer:.2f} < {VOLUME_MIN_USDT:.2f}")
-                    continue
-
-                price_payer = float(ticker_payer_mexc.get('last') or 0.0)
-                if price_payer == 0:
-                    print(f"⚪ {payer} ignorado → preço payer 0")
-                    continue
-
-                checked_receivers = 0
-                for receiver in bit_pairs:
-                    if checked_receivers >= RECEIVER_CHECK_LIMIT:
-                        break
-                    checked_receivers += 1
-
-                    ticker_receiver = bit_ticks.get(receiver)
-                    if ticker_receiver is None:
-                        try:
-                            ticker_receiver = bitmart.fetch_ticker(receiver)
-                            bit_ticks[receiver] = ticker_receiver
-                        except Exception as e:
-                            print(f"Erro ao buscar ticker BitMart {receiver}: {e}")
-                            continue
-
-                    if not ticker_recente_valido(ticker_receiver):
+            for pay in pay_tokens:
+                dest_candidates = [s.split("/")[0] for s in bitmart.symbols if s.endswith(f"/{pay}")]
+                for dest in dest_candidates:
+                    result = estimate_opportunity(pay, dest, usdt_balance)
+                    if not result:
                         continue
-
-                    price_receiver = float(ticker_receiver.get('last') or 0.0)
-                    if price_receiver == 0:
-                        continue
-
-                    spread = ((price_receiver - price_payer) / price_payer) * 100.0
-                    spread_rounded = round(spread, 2)
-
-                    if spread >= SPREAD_MIN_PERCENT:
-                        estimated_profit = mexc_balance_usdt * (spread / 100.0)
+                    spread = result["spread_pct"]
+                    if spread >= SPREAD_MIN:
+                        opportunities_found += 1
+                        est_profit = result["final_usdt"] - usdt_balance
                         msg = (
                             f"🟢 COMPRAR na MEXC\n"
-                            f"Moeda pagadora: {payer}\n"
-                            f"💰 Preço: {format_num(price_payer, 6)}\n\n"
-                            f"➡️ PAGAR na BITMART para moeda receptora: {receiver}\n"
-                            f"💰 Preço destino: {format_num(price_receiver, 6)}\n\n"
-                            f"📊 SPREAD ESPERADO: +{spread_rounded:.2f}%\n"
-                            f"💵 SALDO DISPONÍVEL: {format_num(mexc_balance_usdt,2)} USDT\n"
-                            f"💰 LUCRO ESTIMADO: +{format_num(estimated_profit,2)} USDT"
+                            f"Moeda pagadora: {result['pay_token']}/USDT\n"
+                            f"💰 Preço: {result['price_pay_buy']:.8f}\n\n"
+                            f"➡️ PAGAR na BITMART para moeda receptora: {result['dest_token']}/{result['pay_token']}\n"
+                            f"💰 Preço destino: {result['price_dest_in_pay']:.8f}\n\n"
+                            f"📊 SPREAD ESPERADO: +{spread:.2f}%\n"
+                            f"💵 SALDO DISPONÍVEL: {usdt_balance:.2f} USDT\n"
+                            f"💰 LUCRO ESTIMADO: +{est_profit:.2f} USDT\n"
                         )
                         enviar_mensagem(msg)
-                        print(f"🟢 Sinal enviado → {payer} -> {receiver} | Spread {spread_rounded:.2f}%")
-                    else:
-                        print(f"⚪ {payer} -> {receiver} analisado → Spread atual: {spread_rounded:.2f}%")
 
-                    time.sleep(0.05)
+            if opportunities_found == 0:
+                print("Nenhuma oportunidade acima de 3% nesta varredura.")
+
+            time.sleep(SLEEP_SECONDS)
 
         except Exception as e:
-            print(f"Erro principal loop: {e}")
-
-        time.sleep(LOOP_SLEEP_SECONDS)
+            print(f"Erro no loop principal: {e}")
+            time.sleep(SLEEP_SECONDS)
 
 if __name__ == "__main__":
-    print("🟢 Bot de Arbitragem iniciado com sucesso!")
-    try:
-        analisar_e_enviar()
-    except Exception as e:
-        print(f"Erro fatal: {e}")
-```0
+    print("Iniciando varredura de arbitragem cruzada (MEXC → BitMart)...")
+    main_loop()
