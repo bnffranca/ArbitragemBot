@@ -175,7 +175,11 @@ def main_loop():
                     if not result:
                         continue
                     spread = result["spread_pct"]
-                    if spread >= SPREAD_MIN:
+
+                    # Mostrar todas as oportunidades no console
+                    print(f"⚪ {result['pay_token']}/{result['dest_token']} → Spread atual: {format_pct(spread)}")
+
+                    if spread >= SPREAD_MIN: # agora é >= e não >
                         opportunities_found += 1
                         est_profit = result["final_usdt"] - usdt_balance
                         msg = (
@@ -191,7 +195,7 @@ def main_loop():
                         enviar_mensagem(msg)
 
             if opportunities_found == 0:
-                print("Nenhuma oportunidade acima de 3% nesta varredura.")
+                print(f"Nenhuma oportunidade ≥ {SPREAD_MIN:.2f}% nesta varredura.")
 
             time.sleep(SLEEP_SECONDS)
 
