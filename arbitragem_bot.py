@@ -54,6 +54,8 @@ while True:
                         f"📊 SPREAD ESPERADO: +{spread:.2f}%"
                     )
                     enviar_mensagem(msg)
+                else:
+                    print(f"⚪ {par} analisado → Spread atual: +{spread:.2f}%")
 
             if mx_ask and bm_bid:
                 spread = ((bm_bid - mx_ask) / mx_ask) * 100
@@ -66,9 +68,10 @@ while True:
                         f"📊 SPREAD ESPERADO: +{spread:.2f}%"
                     )
                     enviar_mensagem(msg)
+                else:
+                    print(f"⚪ {par} analisado → Spread atual: +{spread:.2f}%")
 
         except Exception as e:
             print(f"Erro ao processar {par}: {e}")
 
     time.sleep(2)
-
