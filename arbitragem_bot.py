@@ -11,24 +11,13 @@ DELAY = 5
 
 MEXC_API_KEY = "mx0vgldd1b0f5b30b8cd99a3b5a2c69b8"
 MEXC_SECRET_KEY = "b7dd86e6f9c741f1b4e5d3bb5aa604af"
-BITMART_API_KEY = "b12fa99e8a1c77b5c19d6fd238b6b3c1"
-BITMART_SECRET_KEY = "b8ac702cf4d9b3d8bb513f9137a36b4e"
 
 mexc = ccxt.mexc({
     'apiKey': "mx0vgldd1b0f5b30b8cd99a3b5a2c69b8",
     'secret': "b7dd86e6f9c741f1b4e5d3bb5aa604af"
 })
 
-bitmart = ccxt.bitmart({
-    'apiKey': "b12fa99e8a1c77b5c19d6fd238b6b3c1",
-    'secret': "b8ac702cf4d9b3d8bb513f9137a36b4e"
-})
-
 def enviar_telegram(mensagem):
-    url = "https://api.telegram.org/bot8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10/sendMessage"
-    data = {"chat_id": "1809414360", "text": mensagem, "parse_mode": "Markdown"}
-    requests.post(url, data=data)
-
     url = "https://api.telegram.org/bot8359395025:AAEq1HihEgoRFl5Fz6pnx2h30lFFLBPov10/sendMessage"
     data = {"chat_id": "1809414360", "text": mensagem, "parse_mode": "Markdown"}
     requests.post(url, data=data)
@@ -107,10 +96,9 @@ def verificar_arbitragem(exchange, nome_corretora):
                     executar_ciclo(exchange, base, quote2, nome_corretora)
 
 def iniciar_arbitragem():
-    print("🟢 Bot de Arbitragem Interna (MEXC + BitMart) Iniciado com Sucesso!\n")
+    print("🟢 Bot de Arbitragem Interna (MEXC) Iniciado com Sucesso!\n")
     while True:
         verificar_arbitragem(mexc, "MEXC")
-        verificar_arbitragem(bitmart, "BitMart")
         time.sleep(DELAY)
 
 iniciar_arbitragem()
